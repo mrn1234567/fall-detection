@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>人员跌倒检测</title>
+  <style>
+    *{box-sizing:border-box} body{margin:0;background:#0c1222;color:#eef2ff;font-family:"Microsoft YaHei",system-ui,sans-serif}
+    main{max-width:1050px;margin:auto;padding:24px} header{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+    .logo{width:48px;height:48px;border-radius:14px;background:#ef4444;display:grid;place-items:center;font-size:25px}
+    h1{font-size:24px;margin:0} header p{margin:5px 0 0;color:#94a3b8;font-size:13px}
+    .card{background:#151e33;border:1px solid #273553;border-radius:16px;padding:18px;margin-bottom:18px}
+    .state{display:flex;align-items:center;justify-content:space-between;gap:12px}.state-left{display:flex;align-items:center;gap:12px}
+    .dot{width:15px;height:15px;border-radius:50%;background:#64748b}.dot.ok{background:#22c55e;box-shadow:0 0 15px #22c55e}.dot.fall{background:#ef4444;box-shadow:0 0 18px #ef4444;animation:pulse .7s infinite}
+    @keyframes pulse{50%{transform:scale(1.35)}} #stateText{font-size:21px;font-weight:800}.sub{color:#94a3b8;font-size:13px;margin-top:4px}
+    button{border:0;border-radius:9px;padding:10px 16px;background:#334155;color:white;cursor:pointer;font-weight:700}
+    .video{padding:8px;background:#05070c}.video img{display:block;width:100%;max-height:68vh;object-fit:contain;border-radius:10px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.metric{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid #273553}.metric:last-child{border:0}.metric span:first-child{color:#94a3b8}.value{font-weight:800}.good{color:#22c55e}.danger{color:#fb7185}
+    ul{padding-left:20px;color:#b7c2d6;line-height:1.9;font-size:14px}.foot{color:#64748b;text-align:center;font-size:12px}
+    @media(max-width:700px){main{padding:12px}.grid{grid-template-columns:1fr}.state{align-items:flex-start}h1{font-size:20px}}
+  </style>
+</head>
+<body><main>
+  <header><div class="logo">⚠</div><div><h1>人员跌倒检测</h1><p>MediaPipe 姿态识别 · 本地实时处理 · 连续帧防误报</p></div></header>
+  <section class="card state"><div class="state-left"><i id="dot" class="dot"></i><div><div id="stateText">正在连接…</div><div id="detail" class="sub">等待摄像头画面</div></div></div><button id="reset">手动复位报警</button></section>
+  <section class="card video"><img src="/video_feed" alt="摄像头实时画面"></section>
+  <div class="grid">
+    <section class="card"><h3>实时数据</h3>
+      <div class="metric"><span>检测状态</span><span id="pose" class="value">--</span></div>
+      <div class="metric"><span>躯干与水平线夹角</span><span id="angle" class="value">--</span></div>
+      <div class="metric"><span>身体高度 / 宽度</span><span id="ratio" class="value">--</span></div>
+      <div class="metric"><span>跌倒连续帧</span><span id="frames" class="value">0</span></div>
+      <div class="metric"><span>关键点置信等级</span><span id="confidence" class="value">--</span></div>
+    </section>
+    <section class="card"><h3>判定说明</h3><ul>
+      <li>站立时躯干角度接近 90°，显示绿色“正常”。</li>
+      <li>平躺时躯干角度接近 0°，连续约 7 帧后显示红色“摔倒”。</li>
+      <li>普通弯腰只有同时呈横向体形才会进入疑似状态。</li>
+      <li>站起并连续保持直立后，报警会自动解除。</li>
+      <li>目前适用于画面中的单人检测。</li>
+    </ul></section>
+  </div><p class="foot">此项目仅作辅助检测，不应替代人工看护或专业安全设备。</p>
+</main>
+<script>
+const $=id=>document.getElementById(id), dot=$('dot'), text=$('stateText'), detail=$('detail');
+const labels={idle:['等待连接','正在启动摄像头'],normal:['正常','人员处于站立或非跌倒姿态'],fall:['检测到摔倒！','请立即查看现场'],few_points:['人体关键点不足','请让身体更多部位进入画面'],no_person:['未检测到人员','请站到摄像头前'],camera_error:['摄像头错误','请检查权限或摄像头占用情况'],busy:['摄像头被占用','请关闭重复打开的页面']};
+function value(id,v,bad=false){const el=$(id);el.textContent=v;el.className='value '+(bad?'danger':'good')}
+async function poll(){try{const d=await (await fetch('/status',{cache:'no-store'})).json(),m=labels[d.status]||labels.idle; text.textContent=m[0];detail.textContent=d.reason||m[1];dot.className='dot '+(d.status==='fall'?'fall':d.status==='normal'?'ok':''); value('pose',d.status==='fall'?'摔倒':d.status==='normal'?'正常':'--',d.status==='fall');value('angle',d.angle==null?'--':d.angle.toFixed(1)+'°',d.angle!=null&&d.angle<=38);value('ratio',d.ratio?d.ratio.toFixed(2):'--',d.ratio>0&&d.ratio<=.92);value('frames',d.fall_count,d.fall_count>0);value('confidence',({high:'高',medium:'中',low:'低'})[d.confidence]||'--');}catch(e){text.textContent='连接中断';detail.textContent='请确认后端程序仍在运行';dot.className='dot'}}
+$('reset').onclick=async()=>{await fetch('/reset',{method:'POST'});poll()}; setInterval(poll,400);poll();
+</script></body></html>
